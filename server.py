@@ -1,5 +1,6 @@
 #  coding: utf-8 
 import socketserver
+import sys
 import mimetypes
 from datetime import date
 from os import path
@@ -30,6 +31,7 @@ from os import path
 # try: curl -v -X GET http://127.0.0.1:8080/
 
 dateFormat = "%a, %d %b %Y %H:%M:%S GMT"
+VERBOSE = False
 
 class Request():
     def __init__(self):
@@ -205,10 +207,19 @@ class MyWebServer(socketserver.BaseRequestHandler):
         if (res):
             strResponse = res.compileResponse()
             self.request.sendall(bytearray(strResponse, "utf-8"))
-            print(strResponse)
+            if VERBOSE:
+                print(strResponse)
+            else:
+                print(res.status)
         print()
 
 if __name__ == "__main__":
+    if sys.argv and len(sys.argv) > 1: 
+        if sys.argv[1] == "-v" or sys.argv[1] == "verbose":
+            VERBOSE = True
+        else:
+            VERBOSE = False
+
     HOST, PORT = "localhost", 8080
 
     socketserver.TCPServer.allow_reuse_address = True
