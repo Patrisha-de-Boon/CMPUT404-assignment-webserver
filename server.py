@@ -1,9 +1,11 @@
 #  coding: utf-8 
 import socketserver
+import socket
 import sys
 import mimetypes
 from datetime import date
 from os import path
+from urllib.parse import unquote
 
 # Copyright 2013 Abram Hindle, Eddie Antonio Santos
 # 
@@ -112,7 +114,7 @@ class MyWebServer(socketserver.BaseRequestHandler):
         to return for the file.
     """
     def getFilePath(self, originalPath: str):
-        filePath = self.root + "/" + originalPath.lstrip("\\").lstrip("/")
+        filePath = unquote(self.root + "/" + originalPath.lstrip("\\").lstrip("/"))
         if (path.commonpath([self.root, path.abspath(filePath)]) == self.root):
             # Account for symbolic links as long as the link is located in the root.
             filePath = path.abspath(path.realpath(filePath))
@@ -180,6 +182,7 @@ class MyWebServer(socketserver.BaseRequestHandler):
 
     """
         Create a response with the 403 status code
+        and a message for unsupported protocol
     """
     def handleBadProtocol(self):
         res = Response()
@@ -188,18 +191,46 @@ class MyWebServer(socketserver.BaseRequestHandler):
         return res
 
     """
+        Create a response with the 403 status code
+        and a message for incorrect Host header value
+    """
+    def handleBadHost(self):
+        res = Response()
+        res.status = "403 Forbidden"
+        res.data = "Incorrect Host header value"
+        return res
+
+    """
+        Read the request until the "\r\n\r\n" delimeter is encountered,
+        or recv returns an empty string.
+
+    """
+    def getRequestData(self):
+        data = b""
+        while not data.endswith(b"\r\n\r\n"):
+            chunk = self.request.recv(1)
+            if chunk == b'':
+                break
+            else:
+                data += chunk 
+                
+        self.request.shutdown(socket.SHUT_RD)
+        print ("Got a request of: %s" % data)
+        return data
+
+    """
         Handle a given user request
     """
     def handle(self):
-        self.data = self.request.recv(1024).strip()
-        print ("Got a request of: %s" % self.data)
+        self.data = self.getRequestData()
         res: Response = None
         if (self.data):
             req = self.parseData()
             if (req.protocol != "HTTP/1.1"):
                 res = self.handleBadProtocol()
-
-            if (req.method == "GET"):
+            elif (req.headers["Host"] and req.headers["Host"] != HOST and req.headers["Host"] != "127.0.0.1"):
+                res = self.handleBadHost()
+            elif (req.method == "GET"):
                 res = self.handleGet(req)
             else:
                 res = self.handleMethodNotAllowed()
@@ -207,6 +238,7 @@ class MyWebServer(socketserver.BaseRequestHandler):
         if (res):
             strResponse = res.compileResponse()
             self.request.sendall(bytearray(strResponse, "utf-8"))
+            self.request.close()
             if VERBOSE:
                 print(strResponse)
             else:
